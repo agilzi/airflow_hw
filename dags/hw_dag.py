@@ -1,42 +1,44 @@
 import datetime as dt
 import os
 import sys
+from datetime import datetime
 
 from airflow.models import DAG
-from airflow.operators.python import PythonVirtualenvOperator
+from airflow.operators.python import PythonOperator
 
-path = os.path.expanduser('~/airflow_hw')
+# каталог с проектом монтируется в docker-compose.yaml
+path = '/opt/airflow/airflow_hw'
+
 # Добавим путь к коду проекта в переменную окружения, чтобы он был доступен python-процессу
 os.environ['PROJECT_PATH'] = path
+
 # Добавим путь к коду проекта в $PATH, чтобы импортировать функции
 sys.path.insert(0, path)
 
-
-# <YOUR_IMPORTS>
+from modules.pipeline import pipeline
+from modules.predict import predict
 
 args = {
     'owner': 'airflow',
-    'start_date': dt.datetime(2022, 6, 10),
+    'start_date': datetime.now(),
     'retries': 1,
     'retry_delay': dt.timedelta(minutes=1),
     'depends_on_past': False,
 }
-
-def pipeline_op():
-    from modules.pipeline import pipeline
-    pipeline()
 
 with DAG(
         dag_id='car_price_prediction',
         schedule_interval="00 15 * * *",
         default_args=args,
 ) as dag:
-    pipeline = PythonVirtualenvOperator(
+    pipeline = PythonOperator(
+        dag=dag,
         task_id='pipeline',
-        python_callable=pipeline_op,
-        requirements=["pandas==2.2.2",
-                      "scikit-learn==1.5.2",
-                      "dill==0.3.8"]
+        python_callable=pipeline,
     )
-    # <YOUR_CODE>
-
+    predict = PythonOperator(
+        dag=dag,
+        task_id='predict',
+        python_callable=predict,
+    )
+    pipeline >> predict
